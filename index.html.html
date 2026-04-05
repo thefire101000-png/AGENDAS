@@ -1,0 +1,636 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Reservas de Canchas</title>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Syne:wght@400;600&display=swap" rel="stylesheet">
+
+  <!-- ============================================================
+       INSTRUCCIONES PARA ACTIVAR LA BASE DE DATOS EN LA NUBE
+  ================================================================
+
+  1. Ve a https://console.firebase.google.com
+  2. Crea un proyecto nuevo (gratis), ejemplo: "mis-canchas"
+  3. En el menú izquierdo: "Realtime Database" → "Crear base de datos"
+     - Elige modo de prueba (permite lectura/escritura por 30 días)
+     - Luego puedes cambiar las reglas a permanentes
+  4. Ve a "Configuración del proyecto" (ícono ⚙️) → "Tus apps" → "</>" (web)
+  5. Registra la app y copia los valores del objeto firebaseConfig
+  6. Pega esos valores en la sección CONFIGURACIÓN DE FIREBASE más abajo
+  7. Sube este archivo a Netlify Drop (netlify.com/drop) arrastrando el archivo
+  8. ¡Comparte el enlace con todos!
+
+  ================================================================ -->
+
+  <style>
+    :root {
+      --bg: #0b0e18;
+      --surface: #121627;
+      --surface2: #181e30;
+      --border: #1e2640;
+      --border2: #2a3258;
+      --text: #c8d4f0;
+      --text2: #6878a8;
+      --text3: #3a4868;
+      --accent: #3a6adc;
+      --accent2: #1e3a80;
+      --red: #e04848;
+      --green: #3a9050;
+      --green2: #284828;
+      --yellow: #c8a030;
+      --font-main: 'Syne', sans-serif;
+      --font-mono: 'IBM Plex Mono', monospace;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { background: var(--bg); color: var(--text); font-family: var(--font-main); min-height: 100vh; }
+
+    /* HEADER */
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 14px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .logo {
+      font-size: 18px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      color: var(--text);
+    }
+    .logo span { color: var(--accent); }
+
+    /* NAV */
+    .nav {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+    .nav button {
+      background: var(--surface2);
+      border: 1px solid var(--border2);
+      color: var(--text);
+      padding: 8px 20px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-family: var(--font-main);
+      font-size: 13px;
+      font-weight: 600;
+      transition: background 0.15s, border-color 0.15s;
+    }
+    .nav button:hover { background: #222840; border-color: #3a4878; }
+    .date-btn {
+      background: var(--surface) !important;
+      font-family: var(--font-mono) !important;
+      font-size: 13px !important;
+      min-width: 210px;
+      text-align: center;
+      cursor: default !important;
+      pointer-events: none;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+
+    /* SYNC BAR */
+    .sync-bar {
+      text-align: center;
+      font-size: 11px;
+      font-family: var(--font-mono);
+      color: var(--text3);
+      padding: 6px 0 2px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+    }
+    .sync-dot {
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      background: var(--green);
+      flex-shrink: 0;
+    }
+    .sync-dot.syncing { background: var(--yellow); animation: blink 0.7s infinite alternate; }
+    .sync-dot.error { background: var(--red); }
+    @keyframes blink { from { opacity: 1; } to { opacity: 0.2; } }
+
+    /* MAIN */
+    main { padding: 16px; }
+    .table-wrap { overflow-x: auto; border-radius: 8px; border: 1px solid var(--border); }
+    table { width: 100%; border-collapse: collapse; min-width: 580px; }
+
+    thead th {
+      background: var(--surface);
+      color: var(--text2);
+      font-family: var(--font-mono);
+      font-size: 12px;
+      font-weight: 500;
+      padding: 12px 10px;
+      text-align: center;
+      border-bottom: 1px solid var(--border);
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+    thead th.col-hora { text-align: left; min-width: 105px; }
+
+    tbody tr td { border-bottom: 1px solid var(--border); border-right: 1px solid var(--border); }
+    tbody tr:last-child td { border-bottom: none; }
+    tbody tr td:last-child { border-right: none; }
+
+    td.hora {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text2);
+      padding: 10px 10px;
+      background: var(--surface);
+      white-space: pre;
+      min-width: 105px;
+      vertical-align: middle;
+      line-height: 1.6;
+    }
+
+    td.slot { min-width: 130px; cursor: pointer; vertical-align: top; position: relative; }
+    .slot-inner {
+      padding: 10px 12px;
+      min-height: 64px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      transition: background 0.12s;
+    }
+    td.slot.available .slot-inner:hover { background: #1a2240; }
+    td.slot.reserved .slot-inner { background: #101828; }
+    td.slot.reserved .slot-inner:hover { background: #141e34; }
+
+    .price {
+      font-family: var(--font-mono);
+      font-size: 13px;
+      color: var(--text2);
+      text-align: center;
+    }
+    .res-name { font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 2px; }
+    .res-time { font-family: var(--font-mono); font-size: 10px; color: var(--text3); margin-bottom: 5px; }
+    .res-abono { font-family: var(--font-mono); font-size: 11px; color: var(--text2); }
+    .res-debe { font-family: var(--font-mono); font-size: 11px; color: var(--red); margin-top: 2px; }
+    .res-pagado { font-family: var(--font-mono); font-size: 11px; color: var(--green); margin-top: 2px; }
+
+    /* MODAL */
+    .modal-bg {
+      display: none;
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.8);
+      z-index: 200;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+    }
+    .modal-bg.open { display: flex; }
+    .modal {
+      background: var(--surface2);
+      border: 1px solid var(--border2);
+      border-radius: 10px;
+      padding: 24px;
+      width: 100%;
+      max-width: 360px;
+    }
+    .modal h3 { font-size: 16px; font-weight: 600; color: var(--text); margin-bottom: 4px; }
+    .modal-slot-info { font-family: var(--font-mono); font-size: 11px; color: var(--text3); margin-bottom: 18px; }
+    .modal label { display: block; font-size: 11px; font-family: var(--font-mono); color: var(--text2); margin-bottom: 5px; margin-top: 14px; text-transform: uppercase; letter-spacing: 0.06em; }
+    .modal input {
+      width: 100%;
+      background: var(--bg);
+      border: 1px solid var(--border2);
+      border-radius: 6px;
+      color: var(--text);
+      padding: 9px 12px;
+      font-size: 14px;
+      font-family: var(--font-main);
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    .modal input:focus { border-color: var(--accent); }
+    .modal-actions {
+      display: flex;
+      gap: 8px;
+      margin-top: 20px;
+      align-items: center;
+      justify-content: flex-end;
+    }
+    .btn-del {
+      background: transparent;
+      border: 1px solid #5a2020;
+      color: #a04040;
+      padding: 8px 14px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-family: var(--font-main);
+      font-size: 12px;
+      margin-right: auto;
+      transition: background 0.12s;
+    }
+    .btn-del:hover { background: #2a1010; }
+    .btn-cancel {
+      background: transparent;
+      border: 1px solid var(--border2);
+      color: var(--text2);
+      padding: 8px 16px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-family: var(--font-main);
+      font-size: 13px;
+    }
+    .btn-cancel:hover { background: var(--surface); }
+    .btn-save {
+      background: var(--accent2);
+      border: 1px solid var(--accent);
+      color: #90b8f8;
+      padding: 8px 18px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-family: var(--font-main);
+      font-size: 13px;
+      font-weight: 600;
+      transition: background 0.12s;
+    }
+    .btn-save:hover { background: #2a4aaa; }
+    .btn-save:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    /* TOAST */
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%) translateY(80px);
+      background: #1a2840;
+      border: 1px solid var(--accent);
+      color: #90b8f8;
+      font-family: var(--font-mono);
+      font-size: 12px;
+      padding: 10px 20px;
+      border-radius: 6px;
+      z-index: 999;
+      transition: transform 0.3s ease;
+      white-space: nowrap;
+    }
+    .toast.show { transform: translateX(-50%) translateY(0); }
+
+    /* LOADING */
+    .loading-row td {
+      text-align: center;
+      color: var(--text3);
+      font-family: var(--font-mono);
+      font-size: 12px;
+      padding: 50px;
+    }
+
+    /* DB CONFIG WARNING */
+    .db-warning {
+      background: #1a1408;
+      border: 1px solid #4a3808;
+      border-radius: 8px;
+      padding: 14px 18px;
+      margin: 0 16px 16px;
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: #c8a030;
+      display: none;
+    }
+    .db-warning.show { display: block; }
+    .db-warning strong { display: block; margin-bottom: 6px; font-size: 13px; }
+
+    @media (max-width: 500px) {
+      header { justify-content: center; }
+      .logo { font-size: 16px; }
+      td.hora { font-size: 10px; min-width: 80px; padding: 8px 6px; }
+      td.slot { min-width: 100px; }
+      .slot-inner { padding: 8px; min-height: 54px; }
+      .res-name { font-size: 12px; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">⚽ Canchas <span>The Fire</span></div>
+  <div class="nav">
+    <button onclick="changeDate(-1)">← Anterior</button>
+    <button class="date-btn" id="date-label">—</button>
+    <button onclick="changeDate(1)">Siguiente →</button>
+  </div>
+</header>
+
+<div class="sync-bar">
+  <span class="sync-dot" id="sync-dot"></span>
+  <span id="sync-label">Iniciando...</span>
+</div>
+
+<div class="db-warning" id="db-warning">
+  <strong>⚠ Base de datos no configurada</strong>
+  Abre el archivo en un editor de texto y sigue las instrucciones al inicio para conectar Firebase.
+  Por ahora los datos se guardan solo en este navegador (localStorage).
+</div>
+
+<main>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th class="col-hora">Hora</th>
+          <th>Cancha 1</th>
+          <th>Cancha 2</th>
+          <th>Cancha 3</th>
+          <th>Cancha 4</th>
+        </tr>
+      </thead>
+      <tbody id="tbody"></tbody>
+    </table>
+  </div>
+</main>
+
+<!-- MODAL -->
+<div class="modal-bg" id="modal">
+  <div class="modal">
+    <h3 id="modal-title">Registrar reserva</h3>
+    <div class="modal-slot-info" id="modal-info"></div>
+    <label>Nombre del cliente</label>
+    <input type="text" id="inp-name" placeholder="Ej: Juan Pérez" autocomplete="off">
+    <label>Abono recibido ($)</label>
+    <input type="number" id="inp-abono" placeholder="Ej: 50000" min="0">
+    <label>Precio total ($)</label>
+    <input type="number" id="inp-total" placeholder="Ej: 100000" min="0">
+    <div class="modal-actions">
+      <button class="btn-del" id="btn-del" style="display:none" onclick="deleteReservation()">Eliminar</button>
+      <button class="btn-cancel" onclick="closeModal()">Cancelar</button>
+      <button class="btn-save" id="btn-save" onclick="saveReservation()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<!-- ============================================================
+     CONFIGURACIÓN DE FIREBASE
+     Reemplaza los valores de abajo con los de tu proyecto Firebase
+     ============================================================ -->
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+  import { getDatabase, ref, set, get } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+
+  // ⬇⬇ PEGA TU CONFIGURACIÓN DE FIREBASE AQUÍ ⬇⬇
+  const firebaseConfig = {
+    apiKey: "TU_API_KEY",
+    authDomain: "TU_PROYECTO.firebaseapp.com",
+    databaseURL: "https://TU_PROYECTO-default-rtdb.firebaseio.com",
+    projectId: "TU_PROYECTO",
+    storageBucket: "TU_PROYECTO.appspot.com",
+    messagingSenderId: "TU_SENDER_ID",
+    appId: "TU_APP_ID"
+  };
+  // ⬆⬆ FIN DE CONFIGURACIÓN ⬆⬆
+
+  const IS_CONFIGURED = !firebaseConfig.apiKey.includes("TU_");
+
+  let db = null;
+  if (IS_CONFIGURED) {
+    try {
+      const app = initializeApp(firebaseConfig);
+      db = getDatabase(app);
+    } catch(e) { console.warn("Firebase error:", e); }
+  } else {
+    document.getElementById('db-warning').classList.add('show');
+  }
+
+  // ---- CONSTANTES ----
+  const PRICES = [100000, 70000, 70000, 70000];
+  const HOURS = ["01:00 PM","02:00 PM","03:00 PM","04:00 PM","05:00 PM",
+                 "06:00 PM","07:00 PM","08:00 PM","09:00 PM","10:00 PM","11:00 PM"];
+
+  let currentDate = new Date();
+  let dayData = {};
+  let pendingSlot = null;
+  let autoRefreshTimer = null;
+
+  // ---- UTILIDADES ----
+  function dateKey(d) {
+    const y = d.getFullYear();
+    const m = String(d.getMonth()+1).padStart(2,'0');
+    const dd = String(d.getDate()).padStart(2,'0');
+    return `${y}-${m}-${dd}`;
+  }
+
+  function fmtDate(d) {
+    const days = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
+    const months = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+    return `${days[d.getDay()]}, ${String(d.getDate()).padStart(2,'0')} de ${months[d.getMonth()]} ${d.getFullYear()}`;
+  }
+
+  function fmtCOP(n) {
+    return '$' + Number(n).toLocaleString('es-CO');
+  }
+
+  function setSyncStatus(state, text) {
+    const dot = document.getElementById('sync-dot');
+    const label = document.getElementById('sync-label');
+    dot.className = 'sync-dot' + (state === 'syncing' ? ' syncing' : state === 'error' ? ' error' : '');
+    label.textContent = text;
+  }
+
+  function showToast(msg) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    setTimeout(() => t.classList.remove('show'), 2500);
+  }
+
+  // ---- STORAGE (Firebase con fallback a localStorage) ----
+  async function loadFromDB(dk) {
+    if (db) {
+      try {
+        const snap = await get(ref(db, 'reservas/' + dk));
+        return snap.exists() ? snap.val() : {};
+      } catch(e) {
+        console.warn("Firebase read error, usando localStorage", e);
+      }
+    }
+    const raw = localStorage.getItem('canchas:' + dk);
+    return raw ? JSON.parse(raw) : {};
+  }
+
+  async function saveToDB(dk, data) {
+    if (db) {
+      try {
+        await set(ref(db, 'reservas/' + dk), data);
+        return true;
+      } catch(e) {
+        console.warn("Firebase write error, guardando en localStorage", e);
+      }
+    }
+    localStorage.setItem('canchas:' + dk, JSON.stringify(data));
+    return true;
+  }
+
+  // ---- CARGAR DÍA ----
+  async function loadDay(silent = false) {
+    const dk = dateKey(currentDate);
+    document.getElementById('date-label').textContent = fmtDate(currentDate);
+    if (!silent) {
+      setSyncStatus('syncing', 'Cargando reservas...');
+      renderLoading();
+    }
+    try {
+      dayData = await loadFromDB(dk);
+      setSyncStatus('ok', db ? 'Sincronizado ✓' : 'Local (sin Firebase)');
+    } catch(e) {
+      dayData = {};
+      setSyncStatus('error', 'Error de conexión');
+    }
+    render();
+    scheduleRefresh();
+  }
+
+  function scheduleRefresh() {
+    if (autoRefreshTimer) clearTimeout(autoRefreshTimer);
+    autoRefreshTimer = setTimeout(() => loadDay(true), 30000);
+  }
+
+  function changeDate(delta) {
+    currentDate = new Date(currentDate.getTime() + delta * 86400000);
+    loadDay();
+  }
+  window.changeDate = changeDate;
+
+  // ---- RENDER ----
+  function renderLoading() {
+    document.getElementById('tbody').innerHTML =
+      `<tr class="loading-row"><td colspan="5">Cargando reservas del día...</td></tr>`;
+  }
+
+  function render() {
+    const tbody = document.getElementById('tbody');
+    tbody.innerHTML = '';
+    for (let i = 0; i < HOURS.length - 1; i++) {
+      const h1 = HOURS[i], h2 = HOURS[i+1];
+      const tr = document.createElement('tr');
+
+      const tdH = document.createElement('td');
+      tdH.className = 'hora';
+      tdH.textContent = h1 + ' -\n' + h2;
+      tr.appendChild(tdH);
+
+      for (let c = 0; c < 4; c++) {
+        const td = document.createElement('td');
+        td.className = 'slot';
+        const key = `${i}_${c}`;
+        const res = dayData[key];
+
+        if (res) {
+          td.classList.add('reserved');
+          const debt = res.total - res.abono;
+          const inner = document.createElement('div');
+          inner.className = 'slot-inner';
+          inner.innerHTML = `
+            <div class="res-name">${escHtml(res.name)}</div>
+            <div class="res-time">${h1}</div>
+            ${res.abono > 0 ? `<div class="res-abono">Abono: ${fmtCOP(res.abono)}</div>` : ''}
+            ${debt > 0
+              ? `<div class="res-debe">Debe: ${fmtCOP(debt)}</div>`
+              : `<div class="res-pagado">Pagado ✓</div>`}
+          `;
+          td.appendChild(inner);
+          td.onclick = () => openModal(i, c, res);
+        } else {
+          td.classList.add('available');
+          const inner = document.createElement('div');
+          inner.className = 'slot-inner';
+          inner.innerHTML = `<div class="price">${fmtCOP(PRICES[c])}</div>`;
+          td.appendChild(inner);
+          td.onclick = () => openModal(i, c, null);
+        }
+        tr.appendChild(td);
+      }
+      tbody.appendChild(tr);
+    }
+  }
+
+  function escHtml(s) {
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  // ---- MODAL ----
+  function openModal(hour, court, res) {
+    pendingSlot = { hour, court };
+    const h1 = HOURS[hour], h2 = HOURS[hour+1];
+    document.getElementById('modal-info').textContent = `Cancha ${court+1}  •  ${h1} – ${h2}`;
+    document.getElementById('modal-title').textContent = res ? 'Editar reserva' : 'Nueva reserva';
+    document.getElementById('inp-name').value = res ? res.name : '';
+    document.getElementById('inp-abono').value = res ? res.abono : '';
+    document.getElementById('inp-total').value = res ? res.total : PRICES[court];
+    document.getElementById('btn-del').style.display = res ? 'block' : 'none';
+    document.getElementById('btn-save').disabled = false;
+    document.getElementById('modal').classList.add('open');
+    setTimeout(() => document.getElementById('inp-name').focus(), 80);
+  }
+  window.openModal = openModal;
+
+  function closeModal() {
+    document.getElementById('modal').classList.remove('open');
+    pendingSlot = null;
+  }
+  window.closeModal = closeModal;
+
+  async function saveReservation() {
+    const name = document.getElementById('inp-name').value.trim();
+    const abono = parseFloat(document.getElementById('inp-abono').value) || 0;
+    const total = parseFloat(document.getElementById('inp-total').value) || PRICES[pendingSlot.court];
+    if (!name) { document.getElementById('inp-name').focus(); return; }
+
+    const btn = document.getElementById('btn-save');
+    btn.disabled = true;
+    btn.textContent = 'Guardando...';
+
+    const key = `${pendingSlot.hour}_${pendingSlot.court}`;
+    dayData[key] = { name, abono, total };
+    closeModal();
+    render();
+
+    setSyncStatus('syncing', 'Guardando en la nube...');
+    await saveToDB(dateKey(currentDate), dayData);
+    setSyncStatus('ok', db ? 'Guardado en la nube ✓' : 'Guardado local ✓');
+    showToast('Reserva guardada ✓');
+  }
+  window.saveReservation = saveReservation;
+
+  async function deleteReservation() {
+    const key = `${pendingSlot.hour}_${pendingSlot.court}`;
+    delete dayData[key];
+    closeModal();
+    render();
+    setSyncStatus('syncing', 'Actualizando...');
+    await saveToDB(dateKey(currentDate), dayData);
+    setSyncStatus('ok', db ? 'Actualizado ✓' : 'Actualizado local ✓');
+    showToast('Reserva eliminada');
+  }
+  window.deleteReservation = deleteReservation;
+
+  // Cerrar modal clickando afuera
+  document.getElementById('modal').addEventListener('click', function(e) {
+    if (e.target === this) closeModal();
+  });
+
+  // Enter para guardar
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') closeModal();
+  });
+
+  // ---- INICIO ----
+  loadDay();
+</script>
+</body>
+</html>
